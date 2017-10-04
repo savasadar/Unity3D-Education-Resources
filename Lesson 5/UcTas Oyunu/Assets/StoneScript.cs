@@ -7,33 +7,43 @@ public class StoneScript : MonoBehaviour {
 	public enum TYPE {P1, P2};
 
 	public TYPE type = TYPE.P1;
-
 	public Sprite p1;
 	public Sprite p2;
-
 	public GameObject[] points;
 
+	int currPointNumber = 0;
 	Vector3 firstClickPosition;
-
+	Vector3 spawnPosition;
 	bool isMoving = false;
+	GameManager gameManager;
 
 	void Start () {
 		if(type == TYPE.P1)
 			GetComponent<SpriteRenderer> ().sprite = p1;
 		else
 			GetComponent<SpriteRenderer> ().sprite = p2;
+
+		gameManager = GameObject.FindWithTag ("GameManager").GetComponent<GameManager> ();
+
+		spawnPosition = transform.position;
 	}
 
 	void Update () {
+
+		//sıra bu taşta degilse inputlar kontrol edilmesin.
+		if (gameManager.whosTurn != type) {
+			return;
+		}
+
 		//Drag and Drop
 		if (Input.GetMouseButtonDown (0)) {
-			Collider hit = checkTouch (Input.mousePosition);
+			Collider2D hit = checkTouch ();
 			if (hit != null && hit.gameObject.Equals (gameObject)) {
 				isMoving = true;	
 			}
 		} 
 		else if (Input.GetMouseButtonUp (0)) {
-			Collider hit = checkTouch (Input.mousePosition);
+			Collider2D hit = checkTouch ();
 			if (hit != null && hit.gameObject.Equals (gameObject)) {
 				isMoving = false;	
 				PutToPoint (Input.mousePosition);
@@ -42,16 +52,15 @@ public class StoneScript : MonoBehaviour {
 
 		if (isMoving) {
 			Vector3 mPos = Camera.main.ScreenToWorldPoint (Input.mousePosition);
-			mPos.z = -5;
+			mPos.z = -10;
 			gameObject.transform.position = mPos;
 		}
 	}
 
-	private Collider checkTouch(Vector3 position){
+	private Collider2D checkTouch(){
 		Ray ray = Camera.main.ScreenPointToRay( Input.mousePosition );
-		RaycastHit hit;
-		Physics.Raycast (ray, out hit);
-
+		RaycastHit2D hit = Physics2D.Raycast(new Vector2(ray.origin.x, ray.origin.y), Vector2.zero, 1.0f);
+			
 		if (hit.collider != null)
 			Debug.Log (hit.collider.gameObject.name);
 		else
@@ -66,45 +75,78 @@ public class StoneScript : MonoBehaviour {
 		float height = Camera.main.orthographicSize * 2;
 		float width = height * Screen.width / Screen.height;
 
-		Debug.Log ("mpos:" + mPos);
-		Debug.Log ("height:" + height);
-		Debug.Log ("width:" + width);
-
 		int y = 1;
 		int x = 1;
 
-		if (mPos.y < height / 3) {
-			//y 1. bölgede
-			y = 1;
-		}
-		else if (mPos.y > height / 3 && mPos.y < height / 3 * 2) {
+		if (Mathf.Abs(mPos.y) < width / 5) {
 			//y 2. bölgede
 			y = 2;
 		}
-		else if (mPos.y > height / 3 * 2) {
+		else if (mPos.y > 0) {
 			//y 3. bölgede
 			y = 3;
 		}
-
-		if (mPos.x < width / 3) {
-			//y x. bölgede
-			x = 1;
+		else {
+			//y 1. bölgede
+			y = 1;
 		}
-		else if (mPos.x > width / 3 && mPos.x < width / 3 * 2) {
+
+		if(Mathf.Abs(mPos.x) < width / 5) {
 			//x 2. bölgede
 			x = 2;
 		}
-		else if (mPos.x > width / 3 * 2) {
+		else if (mPos.x > 0) {
 			//x 3. bölgede
 			x = 3;
 		}
+		else {
+			//x 1. bölgede
+			x = 1;
+		}
 
-		int point = getPointNumber (x, y);
+		int pointNumber = getPointNumber (x, y);
+
+		//üzerine bırakılan noktada başka bir taş var mı kontrolü
+		bool wasTaken = gameManager.wasTaken(pointNumber);
+
+		if (wasTaken) {
+			
+			Vector3 oldPos;
+			if (currPointNumber == 0) {
+				//ilk yerine geri dönecek
+				oldPos = spawnPosition;
+			} else {
+				//bu alanda başka bir taş var - dolu
+				//eski yerine geri dönecek
+				oldPos = points [currPointNumber - 1].transform.position;
+			}
+
+			oldPos.z = -5;
+			gameObject.transform.position = oldPos;
+			return;
+		}
 
 		//set stone position
-		Vector3 newPos = points[point-1].transform.position;
+		Vector3 newPos = points[pointNumber-1].transform.position;
 		newPos.z = -5;
 		gameObject.transform.position = newPos;
+		//objeyi point stones dizisinde ilgili yere yerleştir
+		gameManager.setPointStone (pointNumber, gameObject.GetComponent<StoneScript>());
+		//objenin eski pointini serbest braktım
+		gameManager.clearPointStone(currPointNumber);
+		//şuanki noktasını güncelle
+		currPointNumber = pointNumber;
+		//sırayı degiştir
+		gameManager.changeTurn();
+	}
+
+	public void reset(){
+		//obje kendini resetleyecek
+		Vector3 pos = spawnPosition;
+		pos.z = -5;
+		gameObject.transform.position = pos;
+
+		currPointNumber = 0;
 	}
 
 	private int getPointNumber(int x, int y){
